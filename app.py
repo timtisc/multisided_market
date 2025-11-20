@@ -3,233 +3,110 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-st.set_page_config(page_title="Two-Sided Market Simulator",
-                   layout="wide")
+st.set_page_config(page_title="Two-Sided Market Simulator", layout="wide")
 
-st.title("Two-Sided Platform Simulator")
+st.title("Two-Sided Platform Simulator – Revenue Rectangles (Two-Sided Markets)")
 
 st.markdown(
-    "Adjust price elasticities and cross-side effects to see how "
-    "demand and **revenue rectangles** (price × quantity) change on each side "
-    "of the platform."
+    "Price elasticity, cross-side network effects, and **visual revenue rectangles**."
 )
 
-# -----------------------------
-# Sidebar: parameters
-# -----------------------------
+# Sidebar Inputs
 st.sidebar.header("Parameters")
 
-# Base demand (scale)
-k_A = st.sidebar.slider("Base demand k_A (side A)", 10.0, 200.0, 100.0, 10.0)
-k_B = st.sidebar.slider("Base demand k_B (side B)", 10.0, 200.0, 80.0, 10.0)
+k_A = st.sidebar.slider("Base demand k_A (Side A)", 50, 200, 120, 10)
+k_B = st.sidebar.slider("Base demand k_B (Side B)", 50, 200, 100, 10)
 
-# Prices (still used for KPIs, but visuals show optimal price rectangle)
-p_A = st.sidebar.slider("Current price p_A (side A)", 0.0, 50.0, 10.0, 1.0)
-p_B = st.sidebar.slider("Current price p_B (side B)", 0.0, 50.0, 5.0, 1.0)
+p_A = st.sidebar.slider("Current price p_A (Side A)", 0.0, 50.0, 15.0, 1.0)
+p_B = st.sidebar.slider("Current price p_B (Side B)", 0.0, 50.0, 12.0, 1.0)
 
-# Own-price elasticities (negative)
-beta_A = st.sidebar.slider("Price elasticity β_A (side A)", -3.0, 0.0, -1.0, 0.1)
-beta_B = st.sidebar.slider("Price elasticity β_B (side B)", -3.0, 0.0, -1.5, 0.1)
+beta_A = st.sidebar.slider("Own-price elasticity β_A", -3.0, 0.0, -1.2, 0.1)
+beta_B = st.sidebar.slider("Own-price elasticity β_B", -3.0, 0.0, -1.6, 0.1)
 
-# Cross-side effects
-gamma_A = st.sidebar.slider("Cross-side effect γ_A (A reacts to B)", 0.0, 2.0, 0.5, 0.1)
-gamma_B = st.sidebar.slider("Cross-side effect γ_B (B reacts to A)", 0.0, 2.0, 0.8, 0.1)
+gamma_A = st.sidebar.slider("Cross-side network effect γ_A (A reacts to B)", 0.0, 2.0, 0.9, 0.1)
+gamma_B = st.sidebar.slider("Cross-side network effect γ_B (B reacts to A)", 0.0, 2.0, 1.1, 0.1)
 
-# -----------------------------
-# Core model
-# -----------------------------
-def solve_demands(k_A, k_B, p_A, p_B,
-                  beta_A, beta_B, gamma_A, gamma_B,
-                  max_iter=500, tol=1e-6):
-    """Simple fixed-point iteration for Q_A and Q_B."""
-    Q_A, Q_B = 50.0, 50.0  # starting guess
-    for _ in range(max_iter):
-        new_Q_A = k_A * (p_A ** beta_A) * ((Q_B + 1.0) ** gamma_A)
-        new_Q_B = k_B * (p_B ** beta_B) * ((Q_A + 1.0) ** gamma_B)
-        if abs(new_Q_A - Q_A) < tol and abs(new_Q_B - Q_B) < tol:
-            Q_A, Q_B = new_Q_A, new_Q_B
+
+def solve_demands(k_A, k_B, p_A, p_B, beta_A, beta_B, gamma_A, gamma_B):
+    Q_A, Q_B = 80.0, 80.0
+    for _ in range(200):
+        new_Q_A = k_A * p_A**beta_A * (Q_B + 1)**gamma_A
+        new_Q_B = k_B * p_B**beta_B * (Q_A + 1)**gamma_B
+        if abs(new_Q_A - Q_A) < 1e-6 and abs(new_Q_B - Q_B) < 1e-6:
             break
         Q_A, Q_B = new_Q_A, new_Q_B
-    return max(Q_A, 0.0), max(Q_B, 0.0)
+    return max(Q_A,0), max(Q_B,0)
 
-# Equilibrium for current slider values (for KPIs)
-Q_A, Q_B = solve_demands(k_A, k_B, p_A, p_B,
-                          beta_A, beta_B, gamma_A, gamma_B)
 
-R_A = p_A * Q_A
-R_B = p_B * Q_B
-R_total = R_A + R_B
+Q_A, Q_B = solve_demands(k_A, k_B, p_A, p_B, beta_A, beta_B, gamma_A, gamma_B)
 
-# -----------------------------
-# KPIs
-# -----------------------------
 col1, col2, col3 = st.columns(3)
-col1.metric("Side A quantity (Q_A at current p_A)", f"{Q_A:,.1f}")
-col2.metric("Side B quantity (Q_B at current p_B)", f"{Q_B:,.1f}")
-col3.metric("Total platform revenue (at current prices)", f"{R_total:,.1f}")
+col1.metric("Quantity Side A", f"{Q_A:.1f}")
+col2.metric("Quantity Side B", f"{Q_B:.1f}")
+col3.metric("Total Revenue", f"{(p_A*Q_A+p_B*Q_B):.1f}")
 
 st.divider()
 
-# -----------------------------
-# Price grids for plotting
-# -----------------------------
-grid_points = 40
-# Make sure the grid is stable and >= some minimum range
-max_pA = max(p_A * 2, 10.0)
-max_pB = max(p_B * 2, 10.0)
+# Price ranges for revenue optimization
+prices_A = np.linspace(1, max(50, p_A*2), 60)
+prices_B = np.linspace(1, max(50, p_B*2), 60)
 
-pA_grid = np.linspace(0.1, max_pA, grid_points)
-pB_grid = np.linspace(0.1, max_pB, grid_points)
+QA_list, RA_list = [], []
+QB_list, RB_list = [], []
 
-# For each price point, recompute equilibrium quantities
-QA_grid = []
-RA_grid = []
+for p1 in prices_A:
+    QA, _ = solve_demands(k_A, k_B, p1, p_B, beta_A, beta_B, gamma_A, gamma_B)
+    QA_list.append(QA)
+    RA_list.append(p1 * QA)
 
-for pA_val in pA_grid:
-    QA_val, QB_val = solve_demands(k_A, k_B, pA_val, p_B,
-                                   beta_A, beta_B, gamma_A, gamma_B)
-    QA_grid.append(QA_val)
-    RA_grid.append(pA_val * QA_val)
+for p2 in prices_B:
+    _, QB = solve_demands(k_A, k_B, p_A, p2, beta_A, beta_B, gamma_A, gamma_B)
+    QB_list.append(QB)
+    RB_list.append(p2 * QB)
 
-QB_grid = []
-RB_grid = []
+idx_opt_A = np.argmax(RA_list)
+idx_opt_B = np.argmax(RB_list)
 
-for pB_val in pB_grid:
-    QA_val, QB_val = solve_demands(k_A, k_B, p_A, pB_val,
-                                   beta_A, beta_B, gamma_A, gamma_B)
-    QB_grid.append(QB_val)
-    RB_grid.append(pB_val * QB_val)
+pA_opt, QA_opt = prices_A[idx_opt_A], QA_list[idx_opt_A]
+pB_opt, QB_opt = prices_B[idx_opt_B], QB_list[idx_opt_B]
 
-QA_grid = np.array(QA_grid)
-QB_grid = np.array(QB_grid)
-RA_grid = np.array(RA_grid)
-RB_grid = np.array(RB_grid)
+st.markdown("### Revenue Rectangles at Optimal Price (per Side)")
 
-# Find revenue-maximizing price for each side (optimal price)
-idx_opt_A = int(np.argmax(RA_grid))
-idx_opt_B = int(np.argmax(RB_grid))
-
-pA_opt = pA_grid[idx_opt_A]
-QA_opt = QA_grid[idx_opt_A]
-RA_opt = RA_grid[idx_opt_A]
-
-pB_opt = pB_grid[idx_opt_B]
-QB_opt = QB_grid[idx_opt_B]
-RB_opt = RB_grid[idx_opt_B]
-
-# Fix axis limits so graphics don't "jump"
-xmax_A = max_pA
-ymax_A = max(QA_grid.max(), QA_opt, Q_A) * 1.1 if QA_grid.max() > 0 else 1.0
-
-xmax_B = max_pB
-ymax_B = max(QB_grid.max(), QB_opt, Q_B) * 1.1 if QB_grid.max() > 0 else 1.0
-
-# -----------------------------
-# Layout: two plots side by side
-# -----------------------------
+# Side-by-side visuals
 c1, c2 = st.columns(2)
 
-# ---- Side A plot ----
-with c1:
-    st.subheader("Side A: demand curve and revenue rectangle at optimal price")
-
-    figA, axA = plt.subplots(figsize=(5, 4))
-
-    # Demand curve
-    axA.plot(pA_grid, QA_grid, label="Demand Q_A", linewidth=1.5)
-    axA.set_xlabel("Price p_A")
-    axA.set_ylabel("Quantity Q_A")
-
-    # Revenue rectangle: from origin (0,0) up to (pA_opt, QA_opt)
-    rectA = patches.Rectangle(
+def plot_demand_with_rectangle(fig, ax, prices, quantities, p_opt, Q_opt, label):
+    ax.plot(quantities, prices, linewidth=1.8, label="Demand Curve")
+    ax.add_patch(patches.Rectangle(
         (0, 0),
-        pA_opt,
-        QA_opt,
-        alpha=0.2
-    )
-    axA.add_patch(rectA)
+        Q_opt,
+        p_opt,
+        linewidth=1.5,
+        edgecolor='black',
+        facecolor='orange',
+        alpha=0.35
+    ))
+    ax.scatter(Q_opt, p_opt, color="black")
+    ax.annotate(f"Revenue = p×Q\n({p_opt:.1f}×{Q_opt:.1f}={p_opt*Q_opt:.1f})",
+                xy=(Q_opt, p_opt), xytext=(Q_opt*0.6, p_opt*1.1),
+                arrowprops=dict(arrowstyle="->"))
+    ax.set_xlabel("Quantity (Q)")
+    ax.set_ylabel("Price (p)")
+    ax.set_title(label)
+    ax.set_xlim(0, max(quantities)*1.1)
+    ax.set_ylim(0, max(prices)*1.1)
+    ax.grid(True)
 
-    # Mark optimal price on x-axis
-    axA.axvline(pA_opt, linestyle="--", linewidth=1)
-    axA.text(
-        pA_opt,
-        ymax_A * 0.95,
-        f"p*_A ≈ {pA_opt:.1f}",
-        rotation=90,
-        va="top",
-        ha="right",
-        fontsize=8
-    )
-
-    # Current price marker (for comparison)
-    axA.axvline(p_A, linestyle=":", linewidth=1)
-    axA.text(
-        p_A,
-        ymax_A * 0.6,
-        "current p_A",
-        rotation=90,
-        va="top",
-        ha="right",
-        fontsize=8
-    )
-
-    axA.set_xlim(0, xmax_A)
-    axA.set_ylim(0, ymax_A)
-    axA.legend(loc="upper right", fontsize="small")
-
+# Side A
+with c1:
+    figA, axA = plt.subplots(figsize=(5,4))
+    plot_demand_with_rectangle(figA, axA, prices_A, QA_list, pA_opt, QA_opt, "Side A")
     st.pyplot(figA)
 
-# ---- Side B plot ----
+# Side B
 with c2:
-    st.subheader("Side B: demand curve and revenue rectangle at optimal price")
-
-    figB, axB = plt.subplots(figsize=(5, 4))
-
-    # Demand curve
-    axB.plot(pB_grid, QB_grid, label="Demand Q_B", linewidth=1.5)
-    axB.set_xlabel("Price p_B")
-    axB.set_ylabel("Quantity Q_B")
-
-    # Revenue rectangle: from origin (0,0) up to (pB_opt, QB_opt)
-    rectB = patches.Rectangle(
-        (0, 0),
-        pB_opt,
-        QB_opt,
-        alpha=0.2
-    )
-    axB.add_patch(rectB)
-
-    # Mark optimal price on x-axis
-    axB.axvline(pB_opt, linestyle="--", linewidth=1)
-    axB.text(
-        pB_opt,
-        ymax_B * 0.95,
-        f"p*_B ≈ {pB_opt:.1f}",
-        rotation=90,
-        va="top",
-        ha="right",
-        fontsize=8
-    )
-
-    # Current price marker for comparison
-    axB.axvline(p_B, linestyle=":", linewidth=1)
-    axB.text(
-        p_B,
-        ymax_B * 0.6,
-        "current p_B",
-        rotation=90,
-        va="top",
-        ha="right",
-        fontsize=8
-    )
-
-    axB.set_xlim(0, xmax_B)
-    axB.set_ylim(0, ymax_B)
-    axB.legend(loc="upper right", fontsize="small")
-
+    figB, axB = plt.subplots(figsize=(5,4))
+    plot_demand_with_rectangle(figB, axB, prices_B, QB_list, pB_opt, QB_opt, "Side B")
     st.pyplot(figB)
 
-st.caption(
-    "For each side, the shaded rectangle shows revenue = p* × Q(p*) at the **revenue-maximizing price p***. "
-    "The demand curve is drawn as usual; the current price is indicated by a dotted vertical line."
-)
+st.caption("Both revenue rectangles adjust dynamically with cross-side effects.")
